@@ -1,20 +1,21 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, List
 from urllib.request import urlretrieve
+import logging
 
 import ROOT
 from tqdm import tqdm
 
+logging.basicConfig(level=logging.INFO)
 
 @dataclass
 class AGCInput:
-    paths: list[str]  # paths, http urls or xrootd urls of the input files
+    paths: list[str]
     process: str
     variation: str
-    nevents: int  # total number of events for the sample
-
+    nevents: int
 
 @dataclass
 class AGCResult:
@@ -26,42 +27,22 @@ class AGCResult:
     region: str
     process: str
     variation: str
-    # We keep around the nominal RResultPtr even when `histo` is a RResultMap:
-    # in v6.28 we need a RResultPtr to pass to RDF.RunGraphs in order to trigger the event loop.
-    # In later versions RunGraphs accepts RResultMaps as well, and we don't need this data attribute.
     nominal_histo: ROOT.RDF.RResultPtr[ROOT.TH1D]
-    # Whether we should call VariationsFor over histo to produce variations
     should_vary: bool = False
 
-
 def _tqdm_urlretrieve_hook(t: tqdm):
-    """From https://github.com/tqdm/tqdm/blob/master/examples/tqdm_wget.py ."""
     last_b = [0]
-
     def update_to(b=1, bsize=1, tsize=None):
-        """
-        b  : int, optional
-            Number of blocks transferred so far [default: 1].
-        bsize  : int, optional
-            Size of each block (in tqdm units) [default: 1].
-        tsize  : int, optional
-            Total size (in tqdm units). If [default: None] or -1,
-            remains unchanged.
-        """
         if tsize not in (None, -1):
             t.total = tsize
         displayed = t.update((b - last_b[0]) * bsize)
         last_b[0] = b
         return displayed
-
     return update_to
-
 
 def _cache_files(file_paths: list, cache_dir: str, remote_prefix: str):
     for url in file_paths:
-        out_path = Path(cache_dir) / url.removeprefix(remote_prefix).lstrip(
-            "/"
-        )
+        out_path = Path(cache_dir) / url.removeprefix(remote_prefix).lstrip("/")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         if not out_path.exists():
             with tqdm(
@@ -77,31 +58,42 @@ def _cache_files(file_paths: list, cache_dir: str, remote_prefix: str):
                     reporthook=_tqdm_urlretrieve_hook(t),
                 )
 
-
 def retrieve_inputs(
-    max_files_per_sample: Optional[int],
-    remote_data_prefix: Optional[str],
-    data_cache: Optional[str],
+    max_files_per_sample: Optional[int] = None,
+    remote_data_prefix: Optional[str] = None,
+    data_cache: Optional[str] = None,
+    sample: Optional[str] = None,
+    file_name: Optional[str] = None,
     input_json: Path = Path("nanoaod_inputs.json"),
-) -> list[AGCInput]:
-    """Return a dictionary of file paths and a corresponding dictionary of event counts.
-    Both are 2-level dictionaries: there is a dictionary per process per variation.
-    Each files[process][variation] corresponds to a list of input files.
-    nevts[process][variation] is the total number of events for that sample.
-    """
+) -> List[AGCInput]:
+    if file_name is not None and sample is None:
+        raise ValueError("Must specify 'sample' when 'file_name' is provided")
+
+    if not input_json.exists():
+        raise FileNotFoundError(f"Input JSON file {input_json} not found")
+
     with open(input_json) as f:
         input_spec = json.load(f)
 
-    input_files: list[AGCInput] = []
+    input_files: List[AGCInput] = []
 
     for process, process_spec in input_spec.items():
         if process == "data":
-            continue  # skip data
+            continue
+
+        if sample is not None and process != sample:
+            continue
 
         for variation, sample_info in process_spec.items():
-            sample_info = sample_info[
-                "files"
-            ]  # this is now a list of (filename, nevents) tuples
+            sample_info = sample_info["files"]
+
+            if file_name is not None:
+                matched = [f for f in sample_info if f["path"] == file_name or f["path"].endswith(file_name)]
+                if not matched:
+                    logging.warning(f"No file matching '{file_name}' found in sample '{process}' variation '{variation}'")
+                    continue
+                sample_info = matched
+                logging.info(f"Selected file '{file_name}' from sample '{process}' variation '{variation}'")
 
             if max_files_per_sample is not None:
                 sample_info = sample_info[:max_files_per_sample]
@@ -110,24 +102,22 @@ def retrieve_inputs(
             prefix = "https://xrootd-local.unl.edu:1094//store/user/AGC"
 
             if remote_data_prefix is not None:
-                assert all(f.startswith(prefix) for f in file_paths)
-                old_prefix, prefix = prefix, remote_data_prefix
-                file_paths = [
-                    f.replace(old_prefix, prefix) for f in file_paths
-                ]
+                assert all(f.startswith(prefix) for f in file_paths), f"Paths do not start with expected prefix {prefix}"
+                file_paths = [f.replace(prefix, remote_data_prefix) for f in file_paths]
 
             if data_cache is not None:
-                assert all(f.startswith(prefix) for f in file_paths)
+                assert all(f.startswith(prefix) for f in file_paths), f"Paths do not start with expected prefix {prefix}"
                 _cache_files(file_paths, data_cache, prefix)
                 old_prefix, prefix = prefix, str(Path(data_cache).absolute())
-                file_paths = [
-                    f.replace(old_prefix, prefix) for f in file_paths
-                ]
+                file_paths = [f.replace(old_prefix, prefix) for f in file_paths]
 
             nevents = sum(f["nevts"] for f in sample_info)
             input_files.append(
                 AGCInput(file_paths, process, variation, nevents)
             )
+
+    if not input_files and (sample or file_name):
+        raise ValueError(f"No files matched sample='{sample}' and file_name='{file_name}'")
 
     return input_files
 

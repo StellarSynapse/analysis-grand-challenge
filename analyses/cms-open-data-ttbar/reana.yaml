@@ -1,0 +1,35 @@
+version: 0.9.4
+
+inputs:
+  files:
+    - Snakefile
+    - analysis.py
+    - nanoaod_inputs.json
+    - ml.py
+    - utils.py
+    - plotting.py
+    - statistical.py
+    - validate_histograms.py
+    - ml_helpers.h
+    - helpers.h
+
+  directories:
+    - statistical_inference
+    - models
+    - reference
+
+
+workflow:
+  type: serial
+  specification:
+    steps:
+      - name: run-analysis
+        environment: stellarsynapse/agc-container-full:latest
+        commands:          
+          - python analysis.py --sample ttbar --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneCUETP8M1_13TeV-powheg-pythia8/cmsopendata2015_ttbar_19980_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_00000_0000.root --no-fitting
+
+
+outputs:
+  files:
+    - /*.root
+    - /*.png

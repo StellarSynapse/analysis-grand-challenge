@@ -146,7 +146,11 @@ class AGCSample():
         hist_nominal_directory = hist_nominal_file.GetDirectory(self.GetHistFactorySample().GetHistoPath())
         hist_nominal = hist_nominal_directory.Get(hist_nominal_name)
 
-        norm_factor_up = hist_top.Integral() / hist_nominal.Integral()
+        #norm_factor_up = hist_top.Integral() / hist_nominal.Integral() commented by DIMA
+        if not hist_top or not hist_nominal or not isinstance(hist_top, ROOT.TH1) or not isinstance(hist_nominal, ROOT.TH1):
+            raise ValueError(f"Invalid or missing histograms for {name}: hist_top={hist_top}, hist_nominal={hist_nominal}")
+        norm_factor_up = hist_top.Integral() / hist_nominal.Integral() if hist_nominal.Integral() != 0 else 1.0
+        
         h_new = hist_top.Clone(f"{channel_name}_{self.GetHistFactorySample().GetName()}_{name}_norm_plus_shape_up_clone")
         h_new.Scale(1 / norm_factor_up)
 
