@@ -2,7 +2,6 @@ version: 0.9.4
 
 inputs:
   files:
-    - Snakefile
     - analysis.py
     - nanoaod_inputs.json
     - ml.py
@@ -24,9 +23,9 @@ workflow:
   specification:
     steps:
       - name: run-analysis
-        environment: stellarsynapse/agc-container-full:latest
+        environment: stellarsynapse/agc-container-xrd
         commands:          
-          - python analysis.py --sample ttbar --file-name https://xrootd-local.unl.edu:1094//store/user/AGC/nanoAOD/TT_TuneCUETP8M1_13TeV-powheg-pythia8/cmsopendata2015_ttbar_19980_PU25nsData2015v1_76X_mcRun2_asymptotic_v12_ext3-v1_00000_0000.root --no-fitting
+          - python analysis.py --sample zprimet --file-name root://eospublic.cern.ch//eos/opendata/cms/mc/RunIISummer20UL16NanoAODv9/ZprimeToTTJets_M9000_W90_TuneCP2_13TeV-madgraphMLM-pythia8/NANOAODSIM/106X_mcRun2_asymptotic_v17-v1/2430000/B0C53E66-917E-8A40-9EE9-2A5E5F681B3F.root --no-fitting
 
 
 outputs:

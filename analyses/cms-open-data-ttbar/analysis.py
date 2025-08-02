@@ -17,6 +17,7 @@ XSEC_INFO = {
     "single_top_t_chan": (36.993 + 22.175) / 0.252,
     "single_top_tW": 37.936 + 37.906,
     "wjets": 61457 * 0.252,
+    "zprimet": 0.3086, #guess by DIMA
 }
 
 def parse_args() -> argparse.Namespace:
@@ -389,6 +390,7 @@ def main() -> None:
         run_distributed(program_start, args, inputs, results, ml_results)
 
     results = postprocess_results(results)
+    
     save_plots(results)
     save_histos([r.histo for r in results], output_fname=args.output)
     print(f"Result histograms saved in file {args.output}")
